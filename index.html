@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduFace — Smart Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151d;
+    --surface2: #1a1f2e;
+    --border: rgba(255,255,255,0.07);
+    --accent: #4f8ef7;
+    --accent2: #7b5ea7;
+    --green: #2dd4a0;
+    --red: #f7614f;
+    --yellow: #f7c948;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Background mesh ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 10% 10%, rgba(79,142,247,.12) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 35% at 90% 90%, rgba(123,94,167,.12) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── Layout ── */
+  .shell { position: relative; z-index: 1; display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 240px; flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 0;
+  }
+  .logo {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+  .logo span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .nav { padding: 16px 12px; flex: 1; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    font-size: 13.5px; font-weight: 500;
+    color: var(--muted); cursor: pointer;
+    transition: all .2s; margin-bottom: 2px;
+    border: none; background: none; width: 100%; text-align: left;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: rgba(79,142,247,.15); color: var(--accent); }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .sidebar-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--muted);
+  }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; }
+
+  /* ── Main ── */
+  .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+  .topbar {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(10,12,16,.6); backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+  .topbar-date { font-size: 13px; color: var(--muted); }
+
+  .content { padding: 28px 32px; flex: 1; }
+
+  /* ── Pages ── */
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ── Stats row ── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.red .stat-value { color: var(--red); }
+  .stat-card.blue .stat-value { color: var(--accent); }
+
+  /* ── Camera area ── */
+  .camera-section {
+    display: grid; grid-template-columns: 1fr 380px; gap: 24px; margin-bottom: 28px;
+  }
+  .camera-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; position: relative;
+    aspect-ratio: 4/3;
+  }
+  #videoEl {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transform: scaleX(-1);
+  }
+  .camera-overlay {
+    position: absolute; inset: 0; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.5);
+  }
+  .camera-placeholder {
+    position: absolute; inset: 0; background: var(--surface2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: var(--muted); font-size: 14px;
+  }
+  .scan-ring {
+    width: 120px; height: 120px; border-radius: 50%;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 0 rgba(79,142,247,.4);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(79,142,247,.4); }
+    70% { box-shadow: 0 0 0 20px rgba(79,142,247,0); }
+    100% { box-shadow: 0 0 0 0 rgba(79,142,247,0); }
+  }
+
+  .camera-controls { display: flex; gap: 10px; padding: 14px; border-top: 1px solid var(--border); }
+
+  /* Recognition result panel */
+  .result-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .result-panel h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  .result-card {
+    background: var(--surface2); border-radius: 12px; padding: 16px;
+    border: 1px solid var(--border); text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    min-height: 180px; justify-content: center;
+  }
+  .result-card.success { border-color: rgba(45,212,160,.3); background: rgba(45,212,160,.05); }
+  .result-card.error   { border-color: rgba(247,97,79,.3);  background: rgba(247,97,79,.05);  }
+
+  .result-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    object-fit: cover; border: 2px solid var(--accent);
+  }
+  .result-name { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; }
+  .result-meta { font-size: 12px; color: var(--muted); }
+  .result-badge {
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .badge-present { background: rgba(45,212,160,.15); color: var(--green); }
+  .badge-unknown { background: rgba(247,97,79,.15); color: var(--red); }
+
+  /* Recent log */
+  .recent-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+  .recent-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 8px; background: var(--surface2);
+    font-size: 13px;
+  }
+  .recent-item img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+  .recent-item .ri-name { font-weight: 500; flex: 1; }
+  .recent-item .ri-time { color: var(--muted); font-size: 12px; }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 9px 18px; border-radius: 10px; border: none; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3a7be0; transform: translateY(-1px); }
+  .btn-danger  { background: rgba(247,97,79,.15); color: var(--red); border: 1px solid rgba(247,97,79,.2); }
+  .btn-danger:hover { background: rgba(247,97,79,.25); }
+  .btn-ghost   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); }
+  .btn-green   { background: var(--green); color: #0a0c10; }
+  .btn-green:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none !important; }
+
+  /* ── Tables ── */
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .table-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+  }
+  .table-header h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 16px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+  }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .stu-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 600;
+  }
+  .pill-present { background: rgba(45,212,160,.12); color: var(--green); }
+  .pill-absent  { background: rgba(247,97,79,.12);  color: var(--red);   }
+
+  /* ── Register form ── */
+  .reg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  input[type=text] {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px;
+    outline: none; transition: border-color .2s;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+
+  /* Webcam capture */
+  .capture-area {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .capture-preview {
+    aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #regVideo, #regCanvas {
+    width: 100%; height: 100%; object-fit: cover;
+    transform: scaleX(-1); display: block;
+  }
+  #regCanvas { display: none; }
+  .capture-controls { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+
+  /* ── Modal ── */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    backdrop-filter: blur(4px); z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-bg.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 28px; width: 520px; max-width: 90vw;
+    transform: scale(.95); transition: transform .2s;
+  }
+  .modal-bg.open .modal { transform: scale(1); }
+  .modal-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; margin-bottom: 20px; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px; z-index: 200;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 20px;
+    font-size: 14px; transform: translateY(80px); opacity: 0;
+    transition: all .3s; max-width: 300px;
+  }
+  #toast.show { transform: none; opacity: 1; }
+  #toast.success { border-color: rgba(45,212,160,.4); }
+  #toast.error   { border-color: rgba(247,97,79,.4);  }
+
+  /* Progress bar */
+  .progress-wrap { background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 8px; }
+  .progress-bar  { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .5s; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+
+  /* History grid */
+  .history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .hist-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; cursor: pointer;
+    transition: border-color .2s;
+  }
+  .hist-card:hover { border-color: var(--accent); }
+  .hist-date { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+  .hist-pct  { font-size: 28px; font-weight: 800; color: var(--accent); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <h1>EduFace</h1>
+      <span>Attendance Intelligence</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" onclick="showPage('scan')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Mark Attendance
+      </button>
+      <button class="nav-item" onclick="showPage('students')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        Students
+      </button>
+      <button class="nav-item" onclick="showPage('today')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Today's Report
+      </button>
+      <button class="nav-item" onclick="showPage('history')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        History
+      </button>
+      <button class="nav-item" onclick="showPage('register')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Register Student
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="sysStatusDot"></span>
+      <span id="sysStatusText">Checking...</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="pageTitle">Mark Attendance</div>
+      <div class="topbar-date" id="currentDate"></div>
+    </div>
+
+    <div class="content">
+
+      <!-- ── SCAN PAGE ── -->
+      <div class="page active" id="page-scan">
+        <div class="stats" id="statsRow">
+          <div class="stat-card blue"><div class="stat-label">Total Students</div><div class="stat-value" id="statTotal">—</div></div>
+          <div class="stat-card green"><div class="stat-label">Present Today</div><div class="stat-value" id="statPresent">—</div></div>
+          <div class="stat-card red"><div class="stat-label">Absent Today</div><div class="stat-value" id="statAbsent">—</div></div>
+          <div class="stat-card"><div class="stat-label">Attendance %</div><div class="stat-value" id="statPct">—</div><div class="progress-wrap"><div class="progress-bar" id="statBar" style="width:0%"></div></div></div>
+        </div>
+
+        <div class="camera-section">
+          <!-- Camera -->
+          <div style="display:flex;flex-direction:column;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <div style="position:relative;flex:1;">
+              <div class="camera-placeholder" id="camPlaceholder">
+                <div class="scan-ring"></div>
+                <span>Camera not started</span>
+              </div>
+              <video id="videoEl" autoplay muted playsinline style="display:none;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+              <canvas id="scanCanvas" style="display:none;"></canvas>
+            </div>
+            <div class="camera-controls">
+              <button class="btn btn-primary" id="startCamBtn" onclick="startCamera()">▶ Start Camera</button>
+              <button class="btn btn-ghost" id="scanBtn" onclick="scanFace()" disabled>🔍 Scan Face</button>
+              <button class="btn btn-ghost" id="autoBtn" onclick="toggleAuto()" disabled>⏱ Auto Scan</button>
+              <button class="btn btn-danger"  id="stopCamBtn" onclick="stopCamera()" style="margin-left:auto;" disabled>■ Stop</button>
+            </div>
+          </div>
+
+          <!-- Result panel -->
+          <div class="result-panel">
+            <h3>Recognition Result</h3>
+            <div class="result-card" id="resultCard">
+              <div style="font-size:40px;">🎓</div>
+              <div style="color:var(--muted);font-size:14px;">Point camera at a student's face and click Scan</div>
+            </div>
+            <h3>Recent Scans</h3>
+            <div class="recent-list" id="recentList">
+              <div style="color:var(--muted);font-size:13px;padding:8px;">No scans yet today</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STUDENTS PAGE ── -->
+      <div class="page" id="page-students">
+        <div class="table-wrap">
+          <div class="table-header">
+            <h3>All Students</h3>
+            <button class="btn btn-primary" onclick="showPage('register')">+ Register New</button>
+          </div>
+          <table>
+            <thead><tr><th>Photo</th><th>Name</th><th>Roll No.</th><th>Class</th><th>Today</th><th>Registered</th><th></th></tr></thead>
+            <tbody id="studentsTable"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── TODAY PAGE ── -->
+      <div class="page" id="page-today">
+        <div style="display:flex;gap:16px;margin-bottom:24px;">
+          <button class="btn btn-primary" onclick="exportCSV()">⬇ Export CSV</button>
+          <button class="btn btn-ghost" onclick="loadTodayReport()">↻ Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header">
+            <h3 id="todayHeader">Today's Attendance</h3>
+            <div id="todaySummary" style="font-size:13px;color:var(--muted);"></div>
+          </div>
+          <table>
+            <thead><tr><th>Photo</th><th>Name</th><th>Roll</th><th>Class</th><th>Status</th><th>Time</th><th>Override</th></tr></thead>
+            <tbody id="todayTable"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── HISTORY PAGE ── -->
+      <div class="page" id="page-history">
+        <div class="history-grid" id="historyGrid">
+          <div class="empty-state">Loading...</div>
+        </div>
+      </div>
+
+      <!-- ── REGISTER PAGE ── -->
+      <div class="page" id="page-register">
+        <div style="max-width:700px;">
+          <div class="reg-grid">
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="regName" placeholder="e.g. Rahul Sharma">
+              </div>
+              <div class="form-group">
+                <label>Roll Number</label>
+                <input type="text" id="regRoll" placeholder="e.g. 2024CS001">
+              </div>
+              <div class="form-group">
+                <label>Class / Section</label>
+                <input type="text" id="regClass" placeholder="e.g. 10-A / B.Tech CS">
+              </div>
+              <button class="btn btn-green" onclick="registerStudent()" id="regSubmitBtn">✓ Register Student</button>
+            </div>
+
+            <!-- Photo capture -->
+            <div class="capture-area">
+              <div class="capture-preview">
+                <div class="camera-placeholder" id="regPlaceholder" style="position:absolute;inset:0;">
+                  <div style="font-size:48px;">📷</div>
+                  <span>Camera preview</span>
+                </div>
+                <video id="regVideo" autoplay muted playsinline style="display:none;"></video>
+                <canvas id="regCanvas" style="display:none;position:absolute;inset:0;width:100%;height:100%;"></canvas>
+              </div>
+              <div class="capture-controls">
+                <button class="btn btn-ghost" id="regStartBtn" onclick="startRegCamera()">▶ Start Camera</button>
+                <button class="btn btn-primary" id="regCaptureBtn" onclick="capturePhoto()" disabled>📸 Capture</button>
+                <button class="btn btn-ghost" id="regRetakeBtn" onclick="retakePhoto()" style="display:none;">↩ Retake</button>
+              </div>
+            </div>
+          </div>
+          <div id="regMsg" style="margin-top:16px;font-size:14px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:5000/api';
+let videoStream = null;
+let autoScanInterval = null;
+let capturedPhotoB64 = null;
+let regStream = null;
+let isAutoScanning = false;
+let recentScans = [];
+
+// ── Init ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('currentDate').textContent =
+    new Date().toLocaleDateString('en-IN', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  checkStatus();
+  loadStats();
+});
+
+async function checkStatus() {
+  try {
+    const r = await fetch(`${API}/status`);
+    const d = await r.json();
+    const dot = document.getElementById('sysStatusDot');
+    const txt = document.getElementById('sysStatusText');
+    if (d.face_recognition) {
+      dot.style.background = 'var(--green)';
+      txt.textContent = 'Face Recognition ON';
+    } else {
+      dot.style.background = 'var(--yellow)';
+      txt.textContent = 'Demo Mode';
+    }
+  } catch {
+    document.getElementById('sysStatusText').textContent = 'Server offline';
+    document.getElementById('sysStatusDot').style.background = 'var(--red)';
+  }
+}
+
+// ── Navigation ────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${name}`).classList.add('active');
+  const titles = {scan:'Mark Attendance',students:'Students',today:"Today's Report",history:'History',register:'Register Student'};
+  document.getElementById('pageTitle').textContent = titles[name] || '';
+  // Activate matching nav button
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    if (btn.textContent.trim().includes(titles[name]?.split("'")[0])) btn.classList.add('active');
+  });
+  if (name === 'students') loadStudents();
+  if (name === 'today')    loadTodayReport();
+  if (name === 'history')  loadHistory();
+  if (name === 'scan')     loadStats();
+}
+
+// ── Stats ─────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch(`${API}/attendance/today`);
+    const d = await r.json();
+    document.getElementById('statTotal').textContent   = d.total;
+    document.getElementById('statPresent').textContent = d.present;
+    document.getElementById('statAbsent').textContent  = d.absent;
+    const pct = d.total ? Math.round(d.present/d.total*100) : 0;
+    document.getElementById('statPct').textContent     = pct + '%';
+    document.getElementById('statBar').style.width     = pct + '%';
+
+    // Recent scans
+    const today = d.records.filter(r => r.present).sort((a,b)=>b.time.localeCompare(a.time));
+    recentScans = today.slice(0,5);
+    renderRecentScans();
+  } catch(e) {}
+}
+
+function renderRecentScans() {
+  const el = document.getElementById('recentList');
+  if (!recentScans.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px;">No scans yet today</div>'; return; }
+  el.innerHTML = recentScans.map(s => `
+    <div class="recent-item">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:14px;">🎓</div>
+      <span class="ri-name">${s.name}</span>
+      <span class="ri-time">${s.time}</span>
+    </div>`).join('');
+}
+
+// ── Camera (Scan) ─────────────────────────────────────
+async function startCamera() {
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}});
+    const v = document.getElementById('videoEl');
+    v.srcObject = videoStream;
+    v.style.display = 'block';
+    document.getElementById('camPlaceholder').style.display = 'none';
+    document.getElementById('startCamBtn').disabled = true;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('autoBtn').disabled = false;
+    document.getElementById('stopCamBtn').disabled = false;
+  } catch(e) {
+    toast('Camera access denied: ' + e.message, 'error');
+  }
+}
+
+function stopCamera() {
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  if (isAutoScanning) toggleAuto();
+  document.getElementById('videoEl').style.display = 'none';
+  document.getElementById('camPlaceholder').style.display = 'flex';
+  document.getElementById('startCamBtn').disabled = false;
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('autoBtn').disabled = true;
+  document.getElementById('stopCamBtn').disabled = true;
+}
+
+function captureFrame() {
+  const v = document.getElementById('videoEl');
+  const c = document.getElementById('scanCanvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const ctx = c.getContext('2d');
+  ctx.save(); ctx.scale(-1,1); ctx.drawImage(v,-c.width,0); ctx.restore();
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+async function scanFace() {
+  if (!videoStream) return;
+  const photo = captureFrame();
+  showResult('scanning');
+  try {
+    const r = await fetch(`${API}/recognize`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({photo})});
+    const d = await r.json();
+    handleScanResult(d);
+  } catch(e) {
+    showResult('error', 'Server not reachable');
+  }
+}
+
+function handleScanResult(d) {
+  if (d.match) {
+    const s = d.student;
+    const already = d.already_marked;
+    document.getElementById('resultCard').className = 'result-card success';
+    document.getElementById('resultCard').innerHTML = `
+      <div style="font-size:40px;">${already?'✅':'🎉'}</div>
+      <div class="result-name">${s.name}</div>
+      <div class="result-meta">${s.roll || ''} ${s.class ? '· '+s.class : ''}</div>
+      <span class="result-badge badge-present">${already ? 'Already Marked' : 'Marked Present'}</span>
+      ${d.confidence ? `<div style="font-size:12px;color:var(--muted);">Confidence: ${d.confidence}%</div>` : ''}
+      <div style="font-size:12px;color:var(--muted);">Time: ${d.time}</div>
+    `;
+    if (!already) toast(`✅ ${s.name} marked present`, 'success');
+    loadStats();
+  } else {
+    document.getElementById('resultCard').className = 'result-card error';
+    document.getElementById('resultCard').innerHTML = `
+      <div style="font-size:40px;">❓</div>
+      <div style="font-weight:600;">Not Recognized</div>
+      <div style="color:var(--muted);font-size:13px;">${d.message || 'Face not found in database'}</div>
+    `;
+  }
+}
+
+function showResult(state, msg='') {
+  const el = document.getElementById('resultCard');
+  if (state === 'scanning') {
+    el.className = 'result-card';
+    el.innerHTML = `<div style="font-size:32px;animation:pulse 1s infinite;">🔍</div><div style="color:var(--muted);">Scanning...</div>`;
+  }
+}
+
+function toggleAuto() {
+  const btn = document.getElementById('autoBtn');
+  if (isAutoScanning) {
+    clearInterval(autoScanInterval);
+    isAutoScanning = false;
+    btn.textContent = '⏱ Auto Scan';
+    btn.style.background = '';
+  } else {
+    isAutoScanning = true;
+    btn.textContent = '⏹ Stop Auto';
+    btn.style.background = 'rgba(247,201,72,.15)';
+    btn.style.color = 'var(--yellow)';
+    scanFace();
+    autoScanInterval = setInterval(scanFace, 3000);
+  }
+}
+
+// ── Students ──────────────────────────────────────────
+async function loadStudents() {
+  const tbody = document.getElementById('studentsTable');
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading...</td></tr>';
+  try {
+    const r = await fetch(`${API}/students`);
+    const list = await r.json();
+    if (!list.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No students registered yet</td></tr>'; return; }
+    tbody.innerHTML = list.map(s => `
+      <tr>
+        <td><div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;">
+          ${s.photo ? `<img src="${s.photo}" style="width:100%;height:100%;object-fit:cover;">` : '🎓'}
+        </div></td>
+        <td><strong>${s.name}</strong></td>
+        <td>${s.roll||'—'}</td>
+        <td>${s.class||'—'}</td>
+        <td><span class="pill ${s.present_today?'pill-present':'pill-absent'}">${s.present_today?'Present':'Absent'}</span></td>
+        <td style="color:var(--muted);font-size:12px;">${s.time_marked||'—'}</td>
+        <td><button class="btn btn-danger" onclick="deleteStudent('${s.id}','${s.name}')">Remove</button></td>
+      </tr>`).join('');
+  } catch { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load</td></tr>'; }
+}
+
+async function deleteStudent(sid, name) {
+  if (!confirm(`Remove ${name} from the system?`)) return;
+  await fetch(`${API}/students/${sid}`, {method:'DELETE'});
+  toast(`${name} removed`, 'success');
+  loadStudents();
+}
+
+// ── Today ─────────────────────────────────────────────
+async function loadTodayReport() {
+  const tbody = document.getElementById('todayTable');
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading...</td></tr>';
+  try {
+    const r = await fetch(`${API}/attendance/today`);
+    const d = await r.json();
+    document.getElementById('todayHeader').textContent = `Attendance — ${d.date}`;
+    document.getElementById('todaySummary').textContent = `${d.present}/${d.total} present (${d.total?Math.round(d.present/d.total*100):0}%)`;
+    tbody.innerHTML = d.records.map(s => `
+      <tr>
+        <td><div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;">🎓</div></td>
+        <td><strong>${s.name}</strong></td>
+        <td>${s.roll||'—'}</td>
+        <td>${s.class||'—'}</td>
+        <td><span class="pill ${s.present?'pill-present':'pill-absent'}">${s.present?'Present':'Absent'}</span></td>
+        <td style="color:var(--muted);font-size:12px;">${s.time}</td>
+        <td>
+          <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px;" onclick="manualToggle('${s.id}',${!s.present})">
+            ${s.present ? 'Mark Absent' : 'Mark Present'}
+          </button>
+        </td>
+      </tr>`).join('');
+  } catch { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load</td></tr>'; }
+}
+
+async function manualToggle(sid, present) {
+  await fetch(`${API}/attendance/manual`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({student_id:sid,present})});
+  loadTodayReport();
+  loadStats();
+}
+
+function exportCSV() { window.open(`${API}/attendance/export`); }
+
+// ── History ───────────────────────────────────────────
+async function loadHistory() {
+  const el = document.getElementById('historyGrid');
+  try {
+    const r = await fetch(`${API}/attendance/history`);
+    const list = await r.json();
+    if (!list.length) { el.innerHTML = '<div class="empty-state">No history yet</div>'; return; }
+    el.innerHTML = list.map(h => {
+      const pct = h.total ? Math.round(h.present/h.total*100) : 0;
+      return `<div class="hist-card">
+        <div class="hist-date">${h.date}</div>
+        <div class="hist-pct">${pct}%</div>
+        <div style="color:var(--muted);font-size:12px;">${h.present}/${h.total} present</div>
+        <div class="progress-wrap" style="margin-top:8px;"><div class="progress-bar" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div class="empty-state">Failed to load history</div>'; }
+}
+
+// ── Register ──────────────────────────────────────────
+async function startRegCamera() {
+  try {
+    regStream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}});
+    const v = document.getElementById('regVideo');
+    v.srcObject = regStream;
+    v.style.display = 'block';
+    document.getElementById('regPlaceholder').style.display = 'none';
+    document.getElementById('regStartBtn').disabled = true;
+    document.getElementById('regCaptureBtn').disabled = false;
+    capturedPhotoB64 = null;
+  } catch(e) {
+    toast('Camera access denied', 'error');
+  }
+}
+
+function capturePhoto() {
+  const v = document.getElementById('regVideo');
+  const c = document.getElementById('regCanvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const ctx = c.getContext('2d');
+  ctx.save(); ctx.scale(-1,1); ctx.drawImage(v,-c.width,0); ctx.restore();
+  capturedPhotoB64 = c.toDataURL('image/jpeg', 0.9);
+  v.style.display = 'none';
+  c.style.display = 'block';
+  document.getElementById('regCaptureBtn').style.display = 'none';
+  document.getElementById('regRetakeBtn').style.display = 'inline-flex';
+  if (regStream) { regStream.getTracks().forEach(t => t.stop()); regStream = null; }
+}
+
+function retakePhoto() {
+  capturedPhotoB64 = null;
+  document.getElementById('regCanvas').style.display = 'none';
+  document.getElementById('regRetakeBtn').style.display = 'none';
+  document.getElementById('regCaptureBtn').style.display = 'inline-flex';
+  document.getElementById('regStartBtn').disabled = false;
+  document.getElementById('regPlaceholder').style.display = 'flex';
+  document.getElementById('regStartBtn').disabled = false;
+  document.getElementById('regCaptureBtn').disabled = true;
+}
+
+async function registerStudent() {
+  const name  = document.getElementById('regName').value.trim();
+  const roll  = document.getElementById('regRoll').value.trim();
+  const cls   = document.getElementById('regClass').value.trim();
+  const msgEl = document.getElementById('regMsg');
+
+  if (!name) { msgEl.innerHTML = '<span style="color:var(--red);">⚠ Name is required</span>'; return; }
+  if (!capturedPhotoB64) { msgEl.innerHTML = '<span style="color:var(--red);">⚠ Please capture a photo first</span>'; return; }
+
+  const btn = document.getElementById('regSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Registering...';
+  msgEl.innerHTML = '';
+
+  try {
+    const r = await fetch(`${API}/students`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, roll, class: cls, photo: capturedPhotoB64})
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast(`✅ ${name} registered successfully!`, 'success');
+      msgEl.innerHTML = `<span style="color:var(--green);">✅ ${name} registered with ID: ${d.id}</span>`;
+      document.getElementById('regName').value = '';
+      document.getElementById('regRoll').value = '';
+      document.getElementById('regClass').value = '';
+      retakePhoto();
+    } else {
+      msgEl.innerHTML = `<span style="color:var(--red);">❌ ${d.error}</span>`;
+    }
+  } catch {
+    msgEl.innerHTML = '<span style="color:var(--red);">❌ Server error. Is the backend running?</span>';
+  }
+  btn.disabled = false; btn.textContent = '✓ Register Student';
+}
+
+// ── Toast ─────────────────────────────────────────────
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  setTimeout(() => el.className = '', 3000);
+}
+</script>
+</body>
+</html>
